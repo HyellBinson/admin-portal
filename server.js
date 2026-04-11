@@ -15,7 +15,6 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 /* DATABASE CONNECTION */
-
 const db = mysql.createConnection({
   host: process.env.DB_HOST,
   port: process.env.DB_PORT,
@@ -36,13 +35,11 @@ db.connect((err) => {
 });
 
 /* ENSURE UPLOAD FOLDER EXISTS */
-
 if (!fs.existsSync("uploads")) {
   fs.mkdirSync("uploads");
 }
 
 /* FILE UPLOAD CONFIG */
-
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, "uploads/"),
   filename: (req, file, cb) =>
@@ -52,7 +49,6 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 /* STUDENT LOGIN */
-
 app.post("/login", (req, res) => {
   const { reg_number, password } = req.body;
 
@@ -69,7 +65,6 @@ app.post("/login", (req, res) => {
 });
 
 /* ADMIN LOGIN */
-
 app.post("/admin/login", (req, res) => {
   const { username, password } = req.body;
 
@@ -96,7 +91,6 @@ app.post("/admin/login", (req, res) => {
 });
 
 /* CHANGE ADMIN PASSWORD */
-
 app.post("/admin/change-password", async (req, res) => {
   const { username, oldPassword, newPassword } = req.body;
 
@@ -108,10 +102,7 @@ app.post("/admin/change-password", async (req, res) => {
       if (result.length === 0)
         return res.json({ message: "Admin not found" });
 
-      const match = await bcrypt.compare(
-        oldPassword,
-        result[0].password
-      );
+      const match = await bcrypt.compare(oldPassword, result[0].password);
 
       if (!match)
         return res.json({ message: "Old password incorrect" });
@@ -132,8 +123,7 @@ app.post("/admin/change-password", async (req, res) => {
   );
 });
 
-/* RESULT UPLOAD */
-
+/* RESULT UPLOAD (NO NOTIFICATION) */
 app.post("/upload-results", upload.single("file"), async (req, res) => {
   try {
     if (!req.file) {
@@ -153,8 +143,6 @@ app.post("/upload-results", upload.single("file"), async (req, res) => {
           else resolve(result);
         });
       });
-
-    const notifiedStudents = new Set();
 
     for (const row of rows) {
       const {
@@ -181,7 +169,8 @@ app.post("/upload-results", upload.single("file"), async (req, res) => {
       }
 
       const existing = await query(
-        `SELECT * FROM results WHERE reg_number=? AND course_code=? AND semester=? AND academic_year=?`,
+        `SELECT * FROM results 
+         WHERE reg_number=? AND course_code=? AND semester=? AND academic_year=?`,
         [reg_number, course_code, semester, academic_year]
       );
 
@@ -202,28 +191,12 @@ app.post("/upload-results", upload.single("file"), async (req, res) => {
           ]
         );
       }
-
-      if (!notifiedStudents.has(reg_number)) {
-        await query(
-          `INSERT INTO notices (title, message, date_posted, expires_at, student_reg)
-           VALUES (?,?,?,?,?)`,
-          [
-            "Result Uploaded",
-            `Your ${semester} semester result for ${academic_year} has been uploaded.`,
-            new Date(),
-            new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-            reg_number
-          ]
-        );
-
-        notifiedStudents.add(reg_number);
-      }
     }
 
     fs.unlinkSync(req.file.path);
 
     res.json({
-      message: "Results uploaded and notifications sent successfully"
+      message: "Results uploaded successfully (NO NOTIFICATIONS)"
     });
 
   } catch (err) {
@@ -232,15 +205,28 @@ app.post("/upload-results", upload.single("file"), async (req, res) => {
   }
 });
 
-/* TEST */
+/* GET RESULTS */
+app.get("/api/results/:reg_number", (req, res) => {
+  const regNumber = req.params.reg_number;
 
-app.get("/", (req, res) => {
-  res.send("Server running");
+  const sql = `
+    SELECT *
+    FROM results
+    WHERE reg_number=?
+  `;
+
+  db.query(sql, [regNumber], (err, results) => {
+    if (err) return res.status(500).json({ error: "DB error" });
+
+    res.json({
+      latest: results,
+      all: results
+    });
+  });
 });
 
 /* NOTICES */
-
-app.get("/admin/notices", (req, res) => {
+app.get("/notices", (req, res) => {
   db.query(
     "SELECT * FROM notices ORDER BY date_posted DESC",
     (err, result) => {
@@ -250,6 +236,7 @@ app.get("/admin/notices", (req, res) => {
   );
 });
 
+/* ADD NOTICE */
 app.post("/admin/notice", (req, res) => {
   const { title, message, student_reg, expires_at } = req.body;
 
@@ -264,6 +251,7 @@ app.post("/admin/notice", (req, res) => {
   );
 });
 
+/* DELETE NOTICE */
 app.delete("/admin/notice/:id", (req, res) => {
   db.query(
     "DELETE FROM notices WHERE id=?",
@@ -276,13 +264,11 @@ app.delete("/admin/notice/:id", (req, res) => {
 });
 
 /* STATIC ADMIN */
-
 app.use("/admin", express.static(path.join(__dirname, "admin-portal")));
 
 /* SERVER */
-
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, "0.0.0.0", () => {
-  console.log("Server running on port", PORT);
+app.listen(PORT, () => {
+  console.log("Server running on port " + PORT);
 });
