@@ -22,26 +22,21 @@ const db = mysql.createConnection({
   user: process.env.DB_USER,
   password: process.env.DB_PASS,
   database: process.env.DB_NAME,
-  ssl: {
-    rejectUnauthorized: false
-  }
+  ssl: { rejectUnauthorized: false }
 });
 
 db.connect((err) => {
-  if (err) {
-    console.log("Database connection failed:", err);
-  } else {
-    console.log("Connected to MySQL database");
-  }
+  if (err) console.log("Database connection failed:", err);
+  else console.log("Connected to MySQL database");
 });
 
-/* ENSURE UPLOAD FOLDER EXISTS */
+/* UPLOAD FOLDER */
 
 if (!fs.existsSync("uploads")) {
   fs.mkdirSync("uploads");
 }
 
-/* FILE UPLOAD CONFIG */
+/* MULTER CONFIG */
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, "uploads/"),
@@ -51,21 +46,24 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
-/* STUDENT LOGIN */
+/* LOGIN */
 
 app.post("/login", (req, res) => {
   const { reg_number, password } = req.body;
 
-  const sql = "SELECT * FROM students WHERE reg_number=? AND password=?";
-  db.query(sql, [reg_number, password], (err, result) => {
-    if (err) return res.json({ success: false, message: "Server error" });
+  db.query(
+    "SELECT * FROM students WHERE reg_number=? AND password=?",
+    [reg_number, password],
+    (err, result) => {
+      if (err) return res.json({ success: false });
 
-    if (result.length > 0) {
-      res.json({ success: true, student: result[0] });
-    } else {
-      res.json({ success: false, message: "Invalid login details" });
+      if (result.length > 0) {
+        res.json({ success: true, student: result[0] });
+      } else {
+        res.json({ success: false });
+      }
     }
-  });
+  );
 });
 
 /* ADMIN LOGIN */
@@ -80,22 +78,18 @@ app.post("/admin/login", (req, res) => {
       if (err) return res.status(500).json({ success: false });
 
       if (result.length === 0)
-        return res.json({ success: false, message: "Invalid login" });
+        return res.json({ success: false });
 
       const match = await bcrypt.compare(password, result[0].password);
 
-      if (!match)
-        return res.json({ success: false, message: "Invalid login" });
+      if (!match) return res.json({ success: false });
 
-      res.json({
-        success: true,
-        admin: result[0]
-      });
+      res.json({ success: true, admin: result[0] });
     }
   );
 });
 
-/* CHANGE ADMIN PASSWORD */
+/* CHANGE PASSWORD */
 
 app.post("/admin/change-password", async (req, res) => {
   const { username, oldPassword, newPassword } = req.body;
@@ -104,17 +98,11 @@ app.post("/admin/change-password", async (req, res) => {
     "SELECT * FROM admins WHERE username=?",
     [username],
     async (err, result) => {
-      if (err) return res.json({ message: "Server error" });
-      if (result.length === 0)
-        return res.json({ message: "Admin not found" });
+      if (err || result.length === 0)
+        return res.json({ message: "Error" });
 
-      const match = await bcrypt.compare(
-        oldPassword,
-        result[0].password
-      );
-
-      if (!match)
-        return res.json({ message: "Old password incorrect" });
+      const match = await bcrypt.compare(oldPassword, result[0].password);
+      if (!match) return res.json({ message: "Wrong old password" });
 
       const hash = await bcrypt.hash(newPassword, 10);
 
@@ -122,24 +110,18 @@ app.post("/admin/change-password", async (req, res) => {
         "UPDATE admins SET password=? WHERE username=?",
         [hash, username],
         (err) => {
-          if (err)
-            return res.json({ message: "Password update failed" });
-
-          res.json({ message: "Password changed successfully" });
+          if (err) return res.json({ message: "Failed" });
+          res.json({ message: "Updated" });
         }
       );
     }
   );
 });
 
-/* RESULT UPLOAD (NO NOTIFICATIONS AT ALL) */
+/* RESULT UPLOAD (NO NOTIFICATIONS) */
 
 app.post("/upload-results", upload.single("file"), async (req, res) => {
   try {
-    if (!req.file) {
-      return res.json({ message: "No file uploaded" });
-    }
-
     const { level, semester, academic_year } = req.body;
 
     const workbook = XLSX.readFile(req.file.path);
@@ -179,7 +161,7 @@ app.post("/upload-results", upload.single("file"), async (req, res) => {
       }
 
       const existing = await query(
-        `SELECT * FROM results WHERE reg_number=? AND course_code=? AND semester=? AND academic_year=?`,
+        "SELECT * FROM results WHERE reg_number=? AND course_code=? AND semester=? AND academic_year=?",
         [reg_number, course_code, semester, academic_year]
       );
 
@@ -204,9 +186,7 @@ app.post("/upload-results", upload.single("file"), async (req, res) => {
 
     fs.unlinkSync(req.file.path);
 
-    res.json({
-      message: "Results uploaded successfully"
-    });
+    res.json({ message: "Results uploaded successfully" });
 
   } catch (err) {
     console.log(err);
@@ -214,13 +194,7 @@ app.post("/upload-results", upload.single("file"), async (req, res) => {
   }
 });
 
-/* TEST */
-
-app.get("/", (req, res) => {
-  res.send("Server running");
-});
-
-/* NOTICES (UNCHANGED & WORKING) */
+/* NOTICES */
 
 app.get("/admin/notices", (req, res) => {
   db.query(
@@ -232,19 +206,29 @@ app.get("/admin/notices", (req, res) => {
   );
 });
 
+/* FIXED NOTICE ROUTE (SAFE FOR SINGLE STUDENT) */
+
 app.post("/admin/notice", (req, res) => {
   const { title, message, student_reg, expires_at } = req.body;
 
+  // 🔥 IMPORTANT FIX: ensure NULL = broadcast, value = single student
+  const targetStudent = student_reg && student_reg.trim() !== "" 
+    ? student_reg 
+    : null;
+
   db.query(
-    `INSERT INTO notices (title,message,date_posted,student_reg,expires_at)
+    `INSERT INTO notices (title, message, date_posted, student_reg, expires_at)
      VALUES (?, ?, NOW(), ?, ?)`,
-    [title, message, student_reg || null, expires_at],
+    [title, message, targetStudent, expires_at],
     (err) => {
       if (err) return res.status(500).json(err);
+
       res.json({ success: true });
     }
   );
 });
+
+/* DELETE NOTICE */
 
 app.delete("/admin/notice/:id", (req, res) => {
   db.query(
@@ -257,11 +241,17 @@ app.delete("/admin/notice/:id", (req, res) => {
   );
 });
 
-/* STATIC ADMIN */
+/* HOME */
+
+app.get("/", (req, res) => {
+  res.send("Server running");
+});
+
+/* STATIC */
 
 app.use("/admin", express.static(path.join(__dirname, "admin-portal")));
 
-/* SERVER */
+/* START SERVER */
 
 const PORT = process.env.PORT || 5000;
 
