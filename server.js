@@ -14,7 +14,8 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-/* DATABASE CONNECTION */
+/* ================= DATABASE ================= */
+
 const db = mysql.createConnection({
   host: process.env.DB_HOST,
   port: process.env.DB_PORT,
@@ -25,16 +26,18 @@ const db = mysql.createConnection({
 });
 
 db.connect((err) => {
-  if (err) console.log("Database connection failed:", err);
+  if (err) console.log("DB connection failed:", err);
   else console.log("Connected to MySQL database");
 });
 
-/* UPLOAD FOLDER */
+/* ================= UPLOAD FOLDER ================= */
+
 if (!fs.existsSync("uploads")) {
   fs.mkdirSync("uploads");
 }
 
-/* MULTER CONFIG */
+/* ================= MULTER ================= */
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, "uploads/"),
   filename: (req, file, cb) =>
@@ -43,7 +46,8 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
-/* LOGIN */
+/* ================= STUDENT LOGIN ================= */
+
 app.post("/login", (req, res) => {
   const { reg_number, password } = req.body;
 
@@ -62,7 +66,8 @@ app.post("/login", (req, res) => {
   );
 });
 
-/* ADMIN LOGIN */
+/* ================= ADMIN LOGIN ================= */
+
 app.post("/admin/login", (req, res) => {
   const { username, password } = req.body;
 
@@ -84,7 +89,8 @@ app.post("/admin/login", (req, res) => {
   );
 });
 
-/* CHANGE PASSWORD */
+/* ================= CHANGE PASSWORD ================= */
+
 app.post("/admin/change-password", async (req, res) => {
   const { username, oldPassword, newPassword } = req.body;
 
@@ -112,7 +118,8 @@ app.post("/admin/change-password", async (req, res) => {
   );
 });
 
-/* RESULT UPLOAD */
+/* ================= UPLOAD RESULTS ================= */
+
 app.post("/upload-results", upload.single("file"), async (req, res) => {
   try {
     const { level, semester, academic_year } = req.body;
@@ -187,25 +194,54 @@ app.post("/upload-results", upload.single("file"), async (req, res) => {
   }
 });
 
-/* GET ALL NOTICES (ADMIN) */
-app.get("/admin/notices", (req, res) => {
-  db.query(
-    "SELECT * FROM notices ORDER BY date_posted DESC",
-    (err, result) => {
-      if (err) return res.status(500).json(err);
-      res.json(result);
-    }
-  );
+/* ================= NOTICES (FIXED CORE LOGIC) ================= */
+
+function noticeFilterSQL() {
+  return `
+    (student_reg IS NULL OR student_reg = ?)
+    AND (expires_at IS NULL OR expires_at > NOW())
+  `;
+}
+
+/* GET NOTICES (FIXED) */
+app.get("/notices/:reg_number", (req, res) => {
+  const reg = req.params.reg_number;
+
+  const sql = `
+    SELECT *
+    FROM notices
+    WHERE ${noticeFilterSQL()}
+    ORDER BY date_posted DESC
+  `;
+
+  db.query(sql, [reg], (err, results) => {
+    if (err) return res.status(500).json(err);
+    res.json(results);
+  });
 });
 
-/* CREATE NOTICE (FIXED) */
+/* COUNT NOTICES (FIXED - SAME LOGIC) */
+app.get("/notices/count/:reg_number", (req, res) => {
+  const reg = req.params.reg_number;
+
+  const sql = `
+    SELECT COUNT(*) AS total
+    FROM notices
+    WHERE ${noticeFilterSQL()}
+  `;
+
+  db.query(sql, [reg], (err, result) => {
+    if (err) return res.status(500).json(err);
+    res.json(result[0]);
+  });
+});
+
+/* ADD NOTICE */
 app.post("/admin/notice", (req, res) => {
   const { title, message, student_reg, expires_at } = req.body;
 
   const targetStudent =
-    student_reg && student_reg.trim() !== ""
-      ? student_reg
-      : null;
+    student_reg && student_reg.trim() !== "" ? student_reg : null;
 
   db.query(
     `INSERT INTO notices (title, message, date_posted, student_reg, expires_at)
@@ -213,7 +249,6 @@ app.post("/admin/notice", (req, res) => {
     [title, message, targetStudent, expires_at],
     (err) => {
       if (err) return res.status(500).json(err);
-
       res.json({ success: true });
     }
   );
@@ -229,29 +264,6 @@ app.delete("/admin/notice/:id", (req, res) => {
       res.json({ success: true });
     }
   );
-});
-
-/* =========================
-   🔥 NEW FIX: NOTICE COUNT
-   ========================= */
-app.get("/notices/count/:reg_number", (req, res) => {
-  const reg = req.params.reg_number;
-
-  const sql = `
-    SELECT COUNT(*) AS total
-    FROM notices
-    WHERE (student_reg IS NULL OR student_reg = ?)
-    AND (expires_at IS NULL OR expires_at > NOW())
-  `;
-
-  db.query(sql, [reg], (err, result) => {
-    if (err) {
-      console.log(err);
-      return res.status(500).json({ error: "Failed to count notices" });
-    }
-
-    res.json(result[0]);
-  });
 });
 
 /* HOME */
