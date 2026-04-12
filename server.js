@@ -15,6 +15,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 /* DATABASE CONNECTION */
+
 const db = mysql.createConnection({
   host: process.env.DB_HOST,
   port: process.env.DB_PORT,
@@ -27,16 +28,21 @@ const db = mysql.createConnection({
 });
 
 db.connect((err) => {
-  if (err) console.log("Database connection failed:", err);
-  else console.log("Connected to MySQL database");
+  if (err) {
+    console.log("Database connection failed:", err);
+  } else {
+    console.log("Connected to MySQL database");
+  }
 });
 
 /* ENSURE UPLOAD FOLDER EXISTS */
+
 if (!fs.existsSync("uploads")) {
   fs.mkdirSync("uploads");
 }
 
 /* FILE UPLOAD CONFIG */
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, "uploads/"),
   filename: (req, file, cb) =>
@@ -46,25 +52,24 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 /* STUDENT LOGIN */
+
 app.post("/login", (req, res) => {
   const { reg_number, password } = req.body;
 
-  db.query(
-    "SELECT * FROM students WHERE reg_number=? AND password=?",
-    [reg_number, password],
-    (err, result) => {
-      if (err) return res.json({ success: false });
+  const sql = "SELECT * FROM students WHERE reg_number=? AND password=?";
+  db.query(sql, [reg_number, password], (err, result) => {
+    if (err) return res.json({ success: false, message: "Server error" });
 
-      if (result.length > 0) {
-        res.json({ success: true, student: result[0] });
-      } else {
-        res.json({ success: false, message: "Invalid login details" });
-      }
+    if (result.length > 0) {
+      res.json({ success: true, student: result[0] });
+    } else {
+      res.json({ success: false, message: "Invalid login details" });
     }
-  );
+  });
 });
 
 /* ADMIN LOGIN */
+
 app.post("/admin/login", (req, res) => {
   const { username, password } = req.body;
 
@@ -75,19 +80,23 @@ app.post("/admin/login", (req, res) => {
       if (err) return res.status(500).json({ success: false });
 
       if (result.length === 0)
-        return res.json({ success: false });
+        return res.json({ success: false, message: "Invalid login" });
 
       const match = await bcrypt.compare(password, result[0].password);
 
       if (!match)
-        return res.json({ success: false });
+        return res.json({ success: false, message: "Invalid login" });
 
-      res.json({ success: true, admin: result[0] });
+      res.json({
+        success: true,
+        admin: result[0]
+      });
     }
   );
 });
 
 /* CHANGE ADMIN PASSWORD */
+
 app.post("/admin/change-password", async (req, res) => {
   const { username, oldPassword, newPassword } = req.body;
 
@@ -96,11 +105,13 @@ app.post("/admin/change-password", async (req, res) => {
     [username],
     async (err, result) => {
       if (err) return res.json({ message: "Server error" });
-
       if (result.length === 0)
         return res.json({ message: "Admin not found" });
 
-      const match = await bcrypt.compare(oldPassword, result[0].password);
+      const match = await bcrypt.compare(
+        oldPassword,
+        result[0].password
+      );
 
       if (!match)
         return res.json({ message: "Old password incorrect" });
@@ -110,7 +121,10 @@ app.post("/admin/change-password", async (req, res) => {
       db.query(
         "UPDATE admins SET password=? WHERE username=?",
         [hash, username],
-        () => {
+        (err) => {
+          if (err)
+            return res.json({ message: "Password update failed" });
+
           res.json({ message: "Password changed successfully" });
         }
       );
@@ -118,7 +132,8 @@ app.post("/admin/change-password", async (req, res) => {
   );
 });
 
-/* RESULT UPLOAD (NO NOTIFICATIONS) */
+/* RESULT UPLOAD (NO NOTIFICATIONS AT ALL) */
+
 app.post("/upload-results", upload.single("file"), async (req, res) => {
   try {
     if (!req.file) {
@@ -140,7 +155,14 @@ app.post("/upload-results", upload.single("file"), async (req, res) => {
       });
 
     for (const row of rows) {
-      const { reg_number, full_name, course_code, course_title, unit, score } = row;
+      const {
+        reg_number,
+        full_name,
+        course_code,
+        course_title,
+        unit,
+        score
+      } = row;
 
       if (!reg_number || !course_code) continue;
 
@@ -166,14 +188,25 @@ app.post("/upload-results", upload.single("file"), async (req, res) => {
           `INSERT INTO results
           (reg_number, course_code, course_title, unit, score, semester, academic_year, level)
           VALUES (?,?,?,?,?,?,?,?)`,
-          [reg_number, course_code, course_title, unit, score, semester, academic_year, level]
+          [
+            reg_number,
+            course_code,
+            course_title,
+            unit,
+            score,
+            semester,
+            academic_year,
+            level
+          ]
         );
       }
     }
 
     fs.unlinkSync(req.file.path);
 
-    res.json({ message: "Results uploaded successfully" });
+    res.json({
+      message: "Results uploaded successfully"
+    });
 
   } catch (err) {
     console.log(err);
@@ -181,21 +214,15 @@ app.post("/upload-results", upload.single("file"), async (req, res) => {
   }
 });
 
-/* GET RESULTS */
-app.get("/api/results/:reg_number", (req, res) => {
-  db.query(
-    "SELECT * FROM results WHERE reg_number=?",
-    [req.params.reg_number],
-    (err, results) => {
-      if (err) return res.status(500).json({ error: "DB error" });
+/* TEST */
 
-      res.json({ latest: results, all: results });
-    }
-  );
+app.get("/", (req, res) => {
+  res.send("Server running");
 });
 
-/* 🔥 GET ALL NOTICES (ADMIN + HISTORY) */
-app.get("/notices", (req, res) => {
+/* NOTICES (UNCHANGED & WORKING) */
+
+app.get("/admin/notices", (req, res) => {
   db.query(
     "SELECT * FROM notices ORDER BY date_posted DESC",
     (err, result) => {
@@ -205,25 +232,6 @@ app.get("/notices", (req, res) => {
   );
 });
 
-/* 🔥 GET STUDENT-SPECIFIC NOTICES */
-app.get("/notices/:reg_number", (req, res) => {
-  const regNumber = req.params.reg_number;
-
-  const sql = `
-    SELECT *
-    FROM notices
-    WHERE (student_reg IS NULL OR student_reg = ?)
-    AND (expires_at IS NULL OR expires_at > NOW())
-    ORDER BY date_posted DESC
-  `;
-
-  db.query(sql, [regNumber], (err, results) => {
-    if (err) return res.status(500).json(err);
-    res.json(results);
-  });
-});
-
-/* ADD NOTICE */
 app.post("/admin/notice", (req, res) => {
   const { title, message, student_reg, expires_at } = req.body;
 
@@ -238,20 +246,25 @@ app.post("/admin/notice", (req, res) => {
   );
 });
 
-/* DELETE NOTICE */
 app.delete("/admin/notice/:id", (req, res) => {
-  db.query("DELETE FROM notices WHERE id=?", [req.params.id], (err) => {
-    if (err) return res.status(500).json(err);
-    res.json({ success: true });
-  });
+  db.query(
+    "DELETE FROM notices WHERE id=?",
+    [req.params.id],
+    (err) => {
+      if (err) return res.status(500).json(err);
+      res.json({ success: true });
+    }
+  );
 });
 
 /* STATIC ADMIN */
+
 app.use("/admin", express.static(path.join(__dirname, "admin-portal")));
 
 /* SERVER */
+
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
-  console.log("Server running on port " + PORT);
+app.listen(PORT, "0.0.0.0", () => {
+  console.log("Server running on port", PORT);
 });
