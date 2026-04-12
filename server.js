@@ -14,7 +14,7 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-/* ================= DATABASE ================= */
+/* DATABASE CONNECTION */
 
 const db = mysql.createConnection({
   host: process.env.DB_HOST,
@@ -26,17 +26,17 @@ const db = mysql.createConnection({
 });
 
 db.connect((err) => {
-  if (err) console.log("DB connection failed:", err);
+  if (err) console.log("Database connection failed:", err);
   else console.log("Connected to MySQL database");
 });
 
-/* ================= UPLOAD FOLDER ================= */
+/* UPLOAD FOLDER */
 
 if (!fs.existsSync("uploads")) {
   fs.mkdirSync("uploads");
 }
 
-/* ================= MULTER ================= */
+/* MULTER CONFIG */
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, "uploads/"),
@@ -46,7 +46,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
-/* ================= STUDENT LOGIN ================= */
+/* LOGIN */
 
 app.post("/login", (req, res) => {
   const { reg_number, password } = req.body;
@@ -66,7 +66,7 @@ app.post("/login", (req, res) => {
   );
 });
 
-/* ================= ADMIN LOGIN ================= */
+/* ADMIN LOGIN */
 
 app.post("/admin/login", (req, res) => {
   const { username, password } = req.body;
@@ -89,7 +89,7 @@ app.post("/admin/login", (req, res) => {
   );
 });
 
-/* ================= CHANGE PASSWORD ================= */
+/* CHANGE PASSWORD */
 
 app.post("/admin/change-password", async (req, res) => {
   const { username, oldPassword, newPassword } = req.body;
@@ -118,7 +118,7 @@ app.post("/admin/change-password", async (req, res) => {
   );
 });
 
-/* ================= UPLOAD RESULTS ================= */
+/* RESULT UPLOAD (NO NOTIFICATIONS) */
 
 app.post("/upload-results", upload.single("file"), async (req, res) => {
   try {
@@ -194,54 +194,27 @@ app.post("/upload-results", upload.single("file"), async (req, res) => {
   }
 });
 
-/* ================= NOTICES (FIXED CORE LOGIC) ================= */
+/* NOTICES */
 
-function noticeFilterSQL() {
-  return `
-    (student_reg IS NULL OR student_reg = ?)
-    AND (expires_at IS NULL OR expires_at > NOW())
-  `;
-}
-
-/* GET NOTICES (FIXED) */
-app.get("/notices/:reg_number", (req, res) => {
-  const reg = req.params.reg_number;
-
-  const sql = `
-    SELECT *
-    FROM notices
-    WHERE ${noticeFilterSQL()}
-    ORDER BY date_posted DESC
-  `;
-
-  db.query(sql, [reg], (err, results) => {
-    if (err) return res.status(500).json(err);
-    res.json(results);
-  });
+app.get("/admin/notices", (req, res) => {
+  db.query(
+    "SELECT * FROM notices ORDER BY date_posted DESC",
+    (err, result) => {
+      if (err) return res.status(500).json(err);
+      res.json(result);
+    }
+  );
 });
 
-/* COUNT NOTICES (FIXED - SAME LOGIC) */
-app.get("/notices/count/:reg_number", (req, res) => {
-  const reg = req.params.reg_number;
+/* FIXED NOTICE ROUTE (SAFE FOR SINGLE STUDENT) */
 
-  const sql = `
-    SELECT COUNT(*) AS total
-    FROM notices
-    WHERE ${noticeFilterSQL()}
-  `;
-
-  db.query(sql, [reg], (err, result) => {
-    if (err) return res.status(500).json(err);
-    res.json(result[0]);
-  });
-});
-
-/* ADD NOTICE */
 app.post("/admin/notice", (req, res) => {
   const { title, message, student_reg, expires_at } = req.body;
 
-  const targetStudent =
-    student_reg && student_reg.trim() !== "" ? student_reg : null;
+  // 🔥 IMPORTANT FIX: ensure NULL = broadcast, value = single student
+  const targetStudent = student_reg && student_reg.trim() !== "" 
+    ? student_reg 
+    : null;
 
   db.query(
     `INSERT INTO notices (title, message, date_posted, student_reg, expires_at)
@@ -249,12 +222,14 @@ app.post("/admin/notice", (req, res) => {
     [title, message, targetStudent, expires_at],
     (err) => {
       if (err) return res.status(500).json(err);
+
       res.json({ success: true });
     }
   );
 });
 
 /* DELETE NOTICE */
+
 app.delete("/admin/notice/:id", (req, res) => {
   db.query(
     "DELETE FROM notices WHERE id=?",
@@ -267,14 +242,17 @@ app.delete("/admin/notice/:id", (req, res) => {
 });
 
 /* HOME */
+
 app.get("/", (req, res) => {
   res.send("Server running");
 });
 
-/* STATIC ADMIN */
+/* STATIC */
+
 app.use("/admin", express.static(path.join(__dirname, "admin-portal")));
 
 /* START SERVER */
+
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, "0.0.0.0", () => {
