@@ -306,6 +306,13 @@ app.delete("/admin/results/course", (req, res) => {
       });
     }
 
+    if (result.affectedRows === 0) {
+      return res.json({
+        success: false,
+        message: "No course found to delete"
+      });
+    }
+
     return res.json({
       success: true,
       message: "Course deleted successfully",
@@ -313,7 +320,6 @@ app.delete("/admin/results/course", (req, res) => {
     });
   });
 });
-
 /* NOTICES */
 app.get("/admin/notices", (req, res) => {
   db.query("SELECT * FROM notices ORDER BY date_posted DESC", (err, result) => {
