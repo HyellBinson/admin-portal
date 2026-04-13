@@ -14,31 +14,6 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-/* 🔥 FIX: FORCE JSON BODY FOR DELETE REQUESTS */
-app.use((req, res, next) => {
-  if (
-    req.method === "DELETE" &&
-    req.headers["content-type"]?.includes("application/json")
-  ) {
-    let data = "";
-
-    req.on("data", chunk => {
-      data += chunk;
-    });
-
-    req.on("end", () => {
-      try {
-        req.body = JSON.parse(data || "{}");
-      } catch (e) {
-        req.body = {};
-      }
-      next();
-    });
-  } else {
-    next();
-  }
-});
-
 /* DATABASE CONNECTION */
 const db = mysql.createConnection({
   host: process.env.DB_HOST,
@@ -67,7 +42,8 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-/* LOGIN */
+/* ===================== LOGIN ===================== */
+
 app.post("/login", (req, res) => {
   const { reg_number, password } = req.body;
 
@@ -86,7 +62,8 @@ app.post("/login", (req, res) => {
   );
 });
 
-/* ADMIN LOGIN */
+/* ===================== ADMIN LOGIN ===================== */
+
 app.post("/admin/login", (req, res) => {
   const { username, password } = req.body;
 
@@ -108,7 +85,8 @@ app.post("/admin/login", (req, res) => {
   );
 });
 
-/* CHANGE PASSWORD */
+/* ===================== CHANGE PASSWORD ===================== */
+
 app.post("/admin/change-password", async (req, res) => {
   const { username, oldPassword, newPassword } = req.body;
 
@@ -136,7 +114,8 @@ app.post("/admin/change-password", async (req, res) => {
   );
 });
 
-/* UPLOAD RESULTS */
+/* ===================== UPLOAD RESULTS ===================== */
+
 app.post("/upload-results", upload.single("file"), async (req, res) => {
   try {
     const { level, semester, academic_year } = req.body;
@@ -211,7 +190,8 @@ app.post("/upload-results", upload.single("file"), async (req, res) => {
   }
 });
 
-/* GET COURSES */
+/* ===================== COURSES ===================== */
+
 app.get("/admin/courses", (req, res) => {
   db.query(
     `SELECT DISTINCT course_code, level, semester, academic_year FROM results ORDER BY academic_year DESC`,
@@ -222,7 +202,8 @@ app.get("/admin/courses", (req, res) => {
   );
 });
 
-/* GET COURSE RESULTS */
+/* ===================== COURSE RESULTS ===================== */
+
 app.get("/admin/results/course", (req, res) => {
   const { course, level, semester, year } = req.query;
 
@@ -237,7 +218,8 @@ app.get("/admin/results/course", (req, res) => {
   );
 });
 
-/* UPDATE RESULT */
+/* ===================== UPDATE RESULT ===================== */
+
 app.put("/admin/results/:id", (req, res) => {
   const { id } = req.params;
   const { reg_number, score } = req.body;
@@ -252,7 +234,8 @@ app.put("/admin/results/:id", (req, res) => {
   );
 });
 
-/* DELETE SINGLE RESULT */
+/* ===================== DELETE SINGLE RESULT ===================== */
+
 app.delete("/admin/results/:id", (req, res) => {
   db.query(
     "DELETE FROM results WHERE id=?",
@@ -275,19 +258,11 @@ app.delete("/admin/results/:id", (req, res) => {
   );
 });
 
-/* DELETE COURSE (FIXED WORKING VERSION) */
-app.delete("/admin/results/course", (req, res) => {
-  console.log("DELETE COURSE BODY:", req.body);
+/* ===================== DELETE COURSE (FIXED - IMPORTANT) ===================== */
 
-  const { course, level, semester, year } = req.body || {};
+app.delete("/admin/results/course/:course/:level/:semester/:year", (req, res) => {
 
-  if (!course || !level || !semester || !year) {
-    return res.status(400).json({
-      success: false,
-      message: "Missing required fields",
-      received: req.body
-    });
-  }
+  const { course, level, semester, year } = req.params;
 
   const sql = `
     DELETE FROM results
@@ -299,7 +274,7 @@ app.delete("/admin/results/course", (req, res) => {
 
   db.query(sql, [course, level, semester, year], (err, result) => {
     if (err) {
-      console.log("MYSQL ERROR:", err);
+      console.log(err);
       return res.status(500).json({
         success: false,
         message: "Database error"
@@ -309,34 +284,69 @@ app.delete("/admin/results/course", (req, res) => {
     if (result.affectedRows === 0) {
       return res.json({
         success: false,
-        message: "No course found to delete"
+        message: "No course found"
       });
     }
 
-    return res.json({
+    res.json({
       success: true,
-      message: "Course deleted successfully",
-      deletedRows: result.affectedRows
+      message: "Course deleted successfully"
     });
   });
 });
-/* NOTICES */
+
+/* ===================== NOTICES ===================== */
+
 app.get("/admin/notices", (req, res) => {
-  db.query("SELECT * FROM notices ORDER BY date_posted DESC", (err, result) => {
-    if (err) return res.status(500).json(err);
-    res.json(result);
-  });
+  db.query(
+    "SELECT * FROM notices ORDER BY date_posted DESC",
+    (err, result) => {
+      if (err) return res.status(500).json(err);
+      res.json(result);
+    }
+  );
 });
 
-/* HOME */
+app.post("/admin/notice", (req, res) => {
+  const { title, message, student_reg, expires_at } = req.body;
+
+  db.query(
+    "INSERT INTO notices (title, message, student_reg, expires_at, date_posted) VALUES (?,?,?,?,NOW())",
+    [title, message, student_reg || null, expires_at || null],
+    (err) => {
+      if (err) {
+        console.log(err);
+        return res.status(500).json({ success: false });
+      }
+      res.json({ success: true });
+    }
+  );
+});
+
+app.delete("/admin/notice/:id", (req, res) => {
+  db.query(
+    "DELETE FROM notices WHERE id=?",
+    [req.params.id],
+    (err, result) => {
+      if (err) return res.status(500).json({ success: false });
+
+      if (result.affectedRows === 0) {
+        return res.json({ success: false });
+      }
+
+      res.json({ success: true });
+    }
+  );
+});
+
+/* ===================== HOME ===================== */
+
 app.get("/", (req, res) => {
   res.send("Server running");
 });
 
-/* STATIC */
-app.use("/admin", express.static(path.join(__dirname, "admin-portal")));
+/* ===================== START SERVER ===================== */
 
-/* START SERVER */
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, "0.0.0.0", () => {
   console.log("Server running on port", PORT);
