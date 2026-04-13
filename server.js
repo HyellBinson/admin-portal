@@ -252,43 +252,44 @@ app.delete("/admin/results/:id", (req, res) => {
 
 /* 🔥 FIXED DELETE COURSE (MAIN FIX) */
 app.delete("/admin/results/course", (req, res) => {
-  const { course, level, semester, year } = req.body;
+  console.log("DELETE COURSE BODY:", req.body);
 
-  // safety check (prevents 500 error)
+  const { course, level, semester, year } = req.body || {};
+
+  // SAFETY CHECK
   if (!course || !level || !semester || !year) {
     return res.status(400).json({
       success: false,
-      message: "Missing parameters"
+      message: "Missing required fields",
+      received: req.body
     });
   }
 
-  db.query(
-    `DELETE FROM results 
-     WHERE course_code=? AND level=? AND semester=? AND academic_year=?`,
-    [course, level, semester, year],
-    (err, result) => {
-      if (err) {
-        console.log("DB ERROR:", err);
-        return res.status(500).json({
-          success: false,
-          message: "Database error"
-        });
-      }
+  const sql = `
+    DELETE FROM results
+    WHERE course_code = ?
+    AND level = ?
+    AND semester = ?
+    AND academic_year = ?
+  `;
 
-      if (result.affectedRows === 0) {
-        return res.status(404).json({
-          success: false,
-          message: "No matching course found"
-        });
-      }
-
-      res.json({
-        success: true,
-        message: "Course deleted"
+  db.query(sql, [course, level, semester, year], (err, result) => {
+    if (err) {
+      console.log("MYSQL ERROR:", err);
+      return res.status(500).json({
+        success: false,
+        message: "Database error"
       });
     }
-  );
+
+    return res.json({
+      success: true,
+      message: "Course deleted successfully",
+      deletedRows: result.affectedRows
+    });
+  });
 });
+
 
 /* NOTICES */
 app.get("/admin/notices", (req, res) => {
