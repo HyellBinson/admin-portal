@@ -258,18 +258,14 @@ app.delete("/admin/results/:id", (req, res) => {
   );
 });
 
-/* ===================== DELETE COURSE (FIXED ONLY HERE) ===================== */
+/* ===================== DELETE COURSE (FIXED ONLY THIS PART) ===================== */
 
 app.delete("/admin/results/course", (req, res) => {
 
-  const data = req.body || req.query || {};
+  // 🔥 FIX: use query instead of body (Render-safe)
+  const { course, level, semester, year } = req.query;
 
-  const course = data.course;
-  const level = data.level;
-  const semester = data.semester;
-  const year = data.year;
-
-  console.log("DELETE COURSE INPUT:", data);
+  console.log("DELETE COURSE INPUT:", req.query);
 
   if (!course || !level || !semester || !year) {
     return res.status(400).json({
