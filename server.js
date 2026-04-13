@@ -14,6 +14,31 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+/* 🔥 FIX: FORCE JSON BODY FOR DELETE REQUESTS */
+app.use((req, res, next) => {
+  if (
+    req.method === "DELETE" &&
+    req.headers["content-type"]?.includes("application/json")
+  ) {
+    let data = "";
+
+    req.on("data", chunk => {
+      data += chunk;
+    });
+
+    req.on("end", () => {
+      try {
+        req.body = JSON.parse(data || "{}");
+      } catch (e) {
+        req.body = {};
+      }
+      next();
+    });
+  } else {
+    next();
+  }
+});
+
 /* DATABASE CONNECTION */
 const db = mysql.createConnection({
   host: process.env.DB_HOST,
@@ -250,13 +275,12 @@ app.delete("/admin/results/:id", (req, res) => {
   );
 });
 
-/* 🔥 FIXED DELETE COURSE (MAIN FIX) */
+/* DELETE COURSE (FIXED WORKING VERSION) */
 app.delete("/admin/results/course", (req, res) => {
   console.log("DELETE COURSE BODY:", req.body);
 
   const { course, level, semester, year } = req.body || {};
 
-  // SAFETY CHECK
   if (!course || !level || !semester || !year) {
     return res.status(400).json({
       success: false,
@@ -289,7 +313,6 @@ app.delete("/admin/results/course", (req, res) => {
     });
   });
 });
-
 
 /* NOTICES */
 app.get("/admin/notices", (req, res) => {
