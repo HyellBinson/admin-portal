@@ -46,7 +46,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
-/* LOGIN */
+/* ================= LOGIN ================= */
 
 app.post("/login", (req, res) => {
   const { reg_number, password } = req.body;
@@ -66,7 +66,7 @@ app.post("/login", (req, res) => {
   );
 });
 
-/* ADMIN LOGIN */
+/* ================= ADMIN LOGIN ================= */
 
 app.post("/admin/login", (req, res) => {
   const { username, password } = req.body;
@@ -89,7 +89,7 @@ app.post("/admin/login", (req, res) => {
   );
 });
 
-/* CHANGE PASSWORD */
+/* ================= CHANGE PASSWORD ================= */
 
 app.post("/admin/change-password", async (req, res) => {
   const { username, oldPassword, newPassword } = req.body;
@@ -118,7 +118,7 @@ app.post("/admin/change-password", async (req, res) => {
   );
 });
 
-/* RESULT UPLOAD (NO NOTIFICATIONS) */
+/* ================= RESULT UPLOAD ================= */
 
 app.post("/upload-results", upload.single("file"), async (req, res) => {
   try {
@@ -194,7 +194,76 @@ app.post("/upload-results", upload.single("file"), async (req, res) => {
   }
 });
 
-/* NOTICES */
+/* ================= NEW: COURSE TRACKING ================= */
+
+// Get all uploaded courses
+app.get("/admin/courses", (req, res) => {
+  const sql = `
+    SELECT DISTINCT course_code, level, semester, academic_year
+    FROM results
+    ORDER BY academic_year DESC
+  `;
+
+  db.query(sql, (err, result) => {
+    if (err) return res.status(500).json(err);
+    res.json(result);
+  });
+});
+
+// Get results for a specific course
+app.get("/admin/results/course", (req, res) => {
+  const { course, level, semester, year } = req.query;
+
+  const sql = `
+    SELECT * FROM results
+    WHERE course_code=? AND level=? AND semester=? AND academic_year=?
+  `;
+
+  db.query(sql, [course, level, semester, year], (err, result) => {
+    if (err) return res.status(500).json(err);
+    res.json(result);
+  });
+});
+
+// Edit result
+app.put("/admin/results/:id", (req, res) => {
+  const { id } = req.params;
+  const { reg_number, course_code, score } = req.body;
+
+  db.query(
+    "UPDATE results SET reg_number=?, course_code=?, score=? WHERE id=?",
+    [reg_number, course_code, score, id],
+    (err) => {
+      if (err) return res.status(500).json(err);
+      res.json({ message: "Result updated successfully" });
+    }
+  );
+});
+
+// Delete single result
+app.delete("/admin/results/:id", (req, res) => {
+  db.query("DELETE FROM results WHERE id=?", [req.params.id], (err) => {
+    if (err) return res.status(500).json(err);
+    res.json({ message: "Result deleted" });
+  });
+});
+
+// Delete entire course
+app.delete("/admin/results/course", (req, res) => {
+  const { course, level, semester, year } = req.body;
+
+  db.query(
+    `DELETE FROM results 
+     WHERE course_code=? AND level=? AND semester=? AND academic_year=?`,
+    [course, level, semester, year],
+    (err) => {
+      if (err) return res.status(500).json(err);
+      res.json({ message: "Course deleted" });
+    }
+  );
+});
+
+/* ================= NOTICES ================= */
 
 app.get("/admin/notices", (req, res) => {
   db.query(
@@ -206,12 +275,9 @@ app.get("/admin/notices", (req, res) => {
   );
 });
 
-/* FIXED NOTICE ROUTE (SAFE FOR SINGLE STUDENT) */
-
 app.post("/admin/notice", (req, res) => {
   const { title, message, student_reg, expires_at } = req.body;
 
-  // 🔥 IMPORTANT FIX: ensure NULL = broadcast, value = single student
   const targetStudent = student_reg && student_reg.trim() !== "" 
     ? student_reg 
     : null;
@@ -222,13 +288,10 @@ app.post("/admin/notice", (req, res) => {
     [title, message, targetStudent, expires_at],
     (err) => {
       if (err) return res.status(500).json(err);
-
       res.json({ success: true });
     }
   );
 });
-
-/* DELETE NOTICE */
 
 app.delete("/admin/notice/:id", (req, res) => {
   db.query(
@@ -241,17 +304,17 @@ app.delete("/admin/notice/:id", (req, res) => {
   );
 });
 
-/* HOME */
+/* ================= HOME ================= */
 
 app.get("/", (req, res) => {
   res.send("Server running");
 });
 
-/* STATIC */
+/* ================= STATIC ================= */
 
 app.use("/admin", express.static(path.join(__dirname, "admin-portal")));
 
-/* START SERVER */
+/* ================= START SERVER ================= */
 
 const PORT = process.env.PORT || 5000;
 
