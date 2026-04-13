@@ -26,7 +26,7 @@ const db = mysql.createConnection({
 
 db.connect((err) => {
   if (err) console.log("Database connection failed:", err);
-  else console.log("Connected to MySQL database");
+  else console.log("✅ Connected to MySQL database");
 });
 
 /* UPLOAD FOLDER */
@@ -34,7 +34,7 @@ if (!fs.existsSync("uploads")) {
   fs.mkdirSync("uploads");
 }
 
-/* MULTER */
+/* MULTER CONFIG */
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, "uploads/"),
   filename: (req, file, cb) =>
@@ -46,13 +46,11 @@ const upload = multer({ storage });
 
 app.post("/login", (req, res) => {
   const { reg_number, password } = req.body;
-
   db.query(
     "SELECT * FROM students WHERE reg_number=? AND password=?",
     [reg_number, password],
     (err, result) => {
       if (err) return res.json({ success: false });
-
       if (result.length > 0) {
         res.json({ success: true, student: result[0] });
       } else {
@@ -72,44 +70,12 @@ app.post("/admin/login", (req, res) => {
     [username],
     async (err, result) => {
       if (err) return res.status(500).json({ success: false });
-
-      if (result.length === 0)
-        return res.json({ success: false });
+      if (result.length === 0) return res.json({ success: false });
 
       const match = await bcrypt.compare(password, result[0].password);
-
       if (!match) return res.json({ success: false });
 
       res.json({ success: true, admin: result[0] });
-    }
-  );
-});
-
-/* ===================== CHANGE PASSWORD ===================== */
-
-app.post("/admin/change-password", async (req, res) => {
-  const { username, oldPassword, newPassword } = req.body;
-
-  db.query(
-    "SELECT * FROM admins WHERE username=?",
-    [username],
-    async (err, result) => {
-      if (err || result.length === 0)
-        return res.json({ message: "Error" });
-
-      const match = await bcrypt.compare(oldPassword, result[0].password);
-      if (!match) return res.json({ message: "Wrong old password" });
-
-      const hash = await bcrypt.hash(newPassword, 10);
-
-      db.query(
-        "UPDATE admins SET password=? WHERE username=?",
-        [hash, username],
-        (err) => {
-          if (err) return res.json({ message: "Failed" });
-          res.json({ message: "Updated" });
-        }
-      );
     }
   );
 });
@@ -163,7 +129,7 @@ app.post("/upload-results", upload.single("file"), async (req, res) => {
 
       if (existing.length === 0) {
         await query(
-          `INSERT INTO results
+          `INSERT INTO results 
           (reg_number, course_code, course_title, unit, score, semester, academic_year, level)
           VALUES (?,?,?,?,?,?,?,?)`,
           [
@@ -181,7 +147,6 @@ app.post("/upload-results", upload.single("file"), async (req, res) => {
     }
 
     fs.unlinkSync(req.file.path);
-
     res.json({ message: "Results uploaded successfully" });
 
   } catch (err) {
@@ -194,7 +159,8 @@ app.post("/upload-results", upload.single("file"), async (req, res) => {
 
 app.get("/admin/courses", (req, res) => {
   db.query(
-    `SELECT DISTINCT course_code, level, semester, academic_year FROM results ORDER BY academic_year DESC`,
+    `SELECT DISTINCT course_code, level, semester, academic_year 
+     FROM results ORDER BY academic_year DESC`,
     (err, result) => {
       if (err) return res.status(500).json(err);
       res.json(result);
@@ -242,71 +208,47 @@ app.delete("/admin/results/:id", (req, res) => {
     [req.params.id],
     (err, result) => {
       if (err) return res.status(500).json({ success: false });
-
       if (result.affectedRows === 0) {
-        return res.status(404).json({
+        return res.status(404).json({ success: false, message: "Not found" });
+      }
+      res.json({ success: true, message: "Result deleted" });
+    }
+  );
+});
+
+/* ===================== BULK DELETE RESULTS (NEW) ===================== */
+app.post("/admin/results/bulk-delete", (req, res) => {
+  const { ids } = req.body;
+
+  if (!ids || !Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({
+      success: false,
+      message: "No IDs provided"
+    });
+  }
+
+  const placeholders = ids.map(() => '?').join(',');
+  
+  db.query(
+    `DELETE FROM results WHERE id IN (${placeholders})`,
+    ids,
+    (err, result) => {
+      if (err) {
+        console.error("Bulk Delete Error:", err);
+        return res.status(500).json({
           success: false,
-          message: "Not found"
+          message: "Database error"
         });
       }
 
       res.json({
         success: true,
-        message: "Result deleted"
+        message: `${result.affectedRows} result(s) deleted successfully`
       });
     }
   );
 });
 
-/* ===================== DELETE COURSE (FIXED ONLY THIS PART) ===================== */
-
-/* ===================== DELETE ENTIRE COURSE ===================== */
-app.delete("/admin/results/course", (req, res) => {
-  const { course, level, semester, year } = req.query;
-
-  console.log("=== DELETE COURSE REQUEST ===");
-  console.log("Query Params:", { course, level, semester, year });
-  console.log("Full URL:", req.url);
-
-  // Strong validation
-  if (!course || !level || !semester || !year) {
-    console.log("❌ Missing parameters");
-    return res.status(400).json({
-      success: false,
-      message: "Missing course parameters"
-    });
-  }
-
-  const sql = `
-    DELETE FROM results 
-    WHERE course_code = ? 
-      AND level = ? 
-      AND semester = ? 
-      AND academic_year = ?
-  `;
-
-  console.log("Executing SQL...");
-
-  db.query(sql, [course, level, semester, year], (err, result) => {
-    if (err) {
-      console.error("❌ MYSQL ERROR:", err);
-      console.error("Error Code:", err.code);
-      console.error("Error SQL Message:", err.sqlMessage);
-      
-      return res.status(500).json({
-        success: false,
-        message: "Database error: " + (err.sqlMessage || err.message)
-      });
-    }
-
-    console.log(`✅ Success - Deleted ${result.affectedRows} record(s)`);
-
-    res.json({
-      success: true,
-      message: `Course ${course} deleted successfully (${result.affectedRows} results removed)`
-    });
-  });
-});
 /* ===================== NOTICES ===================== */
 
 app.get("/admin/notices", (req, res) => {
@@ -341,7 +283,6 @@ app.delete("/admin/notice/:id", (req, res) => {
     [req.params.id],
     (err) => {
       if (err) return res.status(500).json({ success: false });
-
       res.json({ success: true });
     }
   );
@@ -357,5 +298,5 @@ app.get("/", (req, res) => {
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, "0.0.0.0", () => {
-  console.log("Server running on port", PORT);
+  console.log(`🚀 Server running on port ${PORT}`);
 });
