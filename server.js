@@ -34,16 +34,15 @@ if (!fs.existsSync("uploads")) {
   fs.mkdirSync("uploads");
 }
 
-/* MULTER CONFIG */
+/* MULTER */
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, "uploads/"),
   filename: (req, file, cb) =>
     cb(null, Date.now() + path.extname(file.originalname))
 });
-
 const upload = multer({ storage });
 
-/* ================= LOGIN ================= */
+/* LOGIN */
 app.post("/login", (req, res) => {
   const { reg_number, password } = req.body;
 
@@ -62,7 +61,7 @@ app.post("/login", (req, res) => {
   );
 });
 
-/* ================= ADMIN LOGIN ================= */
+/* ADMIN LOGIN */
 app.post("/admin/login", (req, res) => {
   const { username, password } = req.body;
 
@@ -84,7 +83,7 @@ app.post("/admin/login", (req, res) => {
   );
 });
 
-/* ================= CHANGE PASSWORD ================= */
+/* CHANGE PASSWORD */
 app.post("/admin/change-password", async (req, res) => {
   const { username, oldPassword, newPassword } = req.body;
 
@@ -112,7 +111,7 @@ app.post("/admin/change-password", async (req, res) => {
   );
 });
 
-/* ================= RESULT UPLOAD ================= */
+/* UPLOAD RESULTS */
 app.post("/upload-results", upload.single("file"), async (req, res) => {
   try {
     const { level, semester, academic_year } = req.body;
@@ -187,102 +186,10 @@ app.post("/upload-results", upload.single("file"), async (req, res) => {
   }
 });
 
-/* ================= COURSE TRACKING ================= */
-
-// Get all uploaded courses
+/* GET COURSES */
 app.get("/admin/courses", (req, res) => {
-  const sql = `
-    SELECT DISTINCT course_code, level, semester, academic_year
-    FROM results
-    ORDER BY academic_year DESC
-  `;
-
-  db.query(sql, (err, result) => {
-    if (err) return res.status(500).json(err);
-    res.json(result);
-  });
-});
-
-// Get results for a course
-app.get("/admin/results/course", (req, res) => {
-  const { course, level, semester, year } = req.query;
-
-  const sql = `
-    SELECT * FROM results
-    WHERE course_code=? AND level=? AND semester=? AND academic_year=?
-  `;
-
-  db.query(sql, [course, level, semester, year], (err, result) => {
-    if (err) return res.status(500).json(err);
-    res.json(result);
-  });
-});
-
-// Edit result
-app.put("/admin/results/:id", (req, res) => {
-  const { id } = req.params;
-  const { reg_number, course_code, score } = req.body;
-
   db.query(
-    "UPDATE results SET reg_number=?, course_code=?, score=? WHERE id=?",
-    [reg_number, course_code, score, id],
-    (err, result) => {
-      if (err) return res.status(500).json(err);
-
-      res.json({
-        success: true,
-        message: "Result updated successfully"
-      });
-    }
-  );
-});
-
-// 🔥 FIXED DELETE SINGLE RESULT
-app.delete("/admin/results/:id", (req, res) => {
-  const id = req.params.id;
-
-  db.query("DELETE FROM results WHERE id=?", [id], (err, result) => {
-    if (err) {
-      return res.status(500).json({
-        success: false,
-        message: "Database error",
-        error: err
-      });
-    }
-
-    if (result.affectedRows === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "Result not found or already deleted"
-      });
-    }
-
-    res.json({
-      success: true,
-      message: "Result deleted successfully"
-    });
-  });
-});
-
-// Delete entire course
-app.delete("/admin/results/course", (req, res) => {
-  const { course, level, semester, year } = req.body;
-
-  db.query(
-    `DELETE FROM results 
-     WHERE course_code=? AND level=? AND semester=? AND academic_year=?`,
-    [course, level, semester, year],
-    (err) => {
-      if (err) return res.status(500).json(err);
-      res.json({ message: "Course deleted" });
-    }
-  );
-});
-
-/* ================= NOTICES ================= */
-app.get("/admin/notices", (req, res) => {
-  db.query(
-    "SELECT * FROM notices ORDER BY date_posted DESC",
+    `SELECT DISTINCT course_code, level, semester, academic_year FROM results ORDER BY academic_year DESC`,
     (err, result) => {
       if (err) return res.status(500).json(err);
       res.json(result);
@@ -290,45 +197,117 @@ app.get("/admin/notices", (req, res) => {
   );
 });
 
-app.post("/admin/notice", (req, res) => {
-  const { title, message, student_reg, expires_at } = req.body;
-
-  const targetStudent =
-    student_reg && student_reg.trim() !== "" ? student_reg : null;
+/* GET COURSE RESULTS */
+app.get("/admin/results/course", (req, res) => {
+  const { course, level, semester, year } = req.query;
 
   db.query(
-    `INSERT INTO notices (title, message, date_posted, student_reg, expires_at)
-     VALUES (?, ?, NOW(), ?, ?)`,
-    [title, message, targetStudent, expires_at],
-    (err) => {
+    `SELECT * FROM results 
+     WHERE course_code=? AND level=? AND semester=? AND academic_year=?`,
+    [course, level, semester, year],
+    (err, result) => {
       if (err) return res.status(500).json(err);
-      res.json({ success: true });
+      res.json(result);
     }
   );
 });
 
-app.delete("/admin/notice/:id", (req, res) => {
+/* UPDATE RESULT */
+app.put("/admin/results/:id", (req, res) => {
+  const { id } = req.params;
+  const { reg_number, score } = req.body;
+
   db.query(
-    "DELETE FROM notices WHERE id=?",
+    "UPDATE results SET reg_number=?, score=? WHERE id=?",
+    [reg_number, score, id],
+    (err) => {
+      if (err) return res.status(500).json(err);
+      res.json({ success: true, message: "Updated" });
+    }
+  );
+});
+
+/* DELETE SINGLE RESULT */
+app.delete("/admin/results/:id", (req, res) => {
+  db.query(
+    "DELETE FROM results WHERE id=?",
     [req.params.id],
-    (err) => {
-      if (err) return res.status(500).json(err);
-      res.json({ success: true });
+    (err, result) => {
+      if (err) return res.status(500).json({ success: false });
+
+      if (result.affectedRows === 0) {
+        return res.status(404).json({
+          success: false,
+          message: "Not found"
+        });
+      }
+
+      res.json({
+        success: true,
+        message: "Result deleted"
+      });
     }
   );
 });
 
-/* ================= HOME ================= */
+/* 🔥 FIXED DELETE COURSE (MAIN FIX) */
+app.delete("/admin/results/course", (req, res) => {
+  const { course, level, semester, year } = req.body;
+
+  // safety check (prevents 500 error)
+  if (!course || !level || !semester || !year) {
+    return res.status(400).json({
+      success: false,
+      message: "Missing parameters"
+    });
+  }
+
+  db.query(
+    `DELETE FROM results 
+     WHERE course_code=? AND level=? AND semester=? AND academic_year=?`,
+    [course, level, semester, year],
+    (err, result) => {
+      if (err) {
+        console.log("DB ERROR:", err);
+        return res.status(500).json({
+          success: false,
+          message: "Database error"
+        });
+      }
+
+      if (result.affectedRows === 0) {
+        return res.status(404).json({
+          success: false,
+          message: "No matching course found"
+        });
+      }
+
+      res.json({
+        success: true,
+        message: "Course deleted"
+      });
+    }
+  );
+});
+
+/* NOTICES */
+app.get("/admin/notices", (req, res) => {
+  db.query("SELECT * FROM notices ORDER BY date_posted DESC", (err, result) => {
+    if (err) return res.status(500).json(err);
+    res.json(result);
+  });
+});
+
+/* HOME */
 app.get("/", (req, res) => {
   res.send("Server running");
 });
 
-/* ================= STATIC ================= */
+/* STATIC */
 app.use("/admin", express.static(path.join(__dirname, "admin-portal")));
 
-/* ================= START SERVER ================= */
+/* START SERVER */
 const PORT = process.env.PORT || 5000;
-
 app.listen(PORT, "0.0.0.0", () => {
   console.log("Server running on port", PORT);
 });
