@@ -258,7 +258,7 @@ app.delete("/admin/results/:id", (req, res) => {
   );
 });
 
-/* ===================== DELETE COURSE (FIXED - IMPORTANT) ===================== */
+/* ===================== DELETE COURSE (PARAM VERSION - KEEP SAFE) ===================== */
 
 app.delete("/admin/results/course/:course/:level/:semester/:year", (req, res) => {
 
@@ -281,10 +281,48 @@ app.delete("/admin/results/course/:course/:level/:semester/:year", (req, res) =>
       });
     }
 
-    if (result.affectedRows === 0) {
-      return res.json({
+    res.json({
+      success: true,
+      message: "Course deleted successfully"
+    });
+  });
+});
+
+/* ===================== 🔥 FIX: FRONTEND DELETE SUPPORT ===================== */
+
+app.delete("/admin/results/course", (req, res) => {
+
+  const data = req.body || req.query;
+
+  const course = data.course;
+  const level = data.level;
+  const semester = data.semester;
+  const year = data.year;
+
+  console.log("DELETE COURSE INPUT:", data);
+
+  if (!course || !level || !semester || !year) {
+    return res.status(400).json({
+      success: false,
+      message: "Missing course data"
+    });
+  }
+
+  const sql = `
+    DELETE FROM results
+    WHERE course_code = ?
+    AND level = ?
+    AND semester = ?
+    AND academic_year = ?
+  `;
+
+  db.query(sql, [course, level, semester, year], (err, result) => {
+
+    if (err) {
+      console.log(err);
+      return res.status(500).json({
         success: false,
-        message: "No course found"
+        message: "Database error"
       });
     }
 
@@ -329,10 +367,6 @@ app.delete("/admin/notice/:id", (req, res) => {
     [req.params.id],
     (err, result) => {
       if (err) return res.status(500).json({ success: false });
-
-      if (result.affectedRows === 0) {
-        return res.json({ success: false });
-      }
 
       res.json({ success: true });
     }
