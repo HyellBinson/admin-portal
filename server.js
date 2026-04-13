@@ -15,7 +15,6 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 /* DATABASE CONNECTION */
-
 const db = mysql.createConnection({
   host: process.env.DB_HOST,
   port: process.env.DB_PORT,
@@ -31,13 +30,11 @@ db.connect((err) => {
 });
 
 /* UPLOAD FOLDER */
-
 if (!fs.existsSync("uploads")) {
   fs.mkdirSync("uploads");
 }
 
 /* MULTER CONFIG */
-
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, "uploads/"),
   filename: (req, file, cb) =>
@@ -47,7 +44,6 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 /* ================= LOGIN ================= */
-
 app.post("/login", (req, res) => {
   const { reg_number, password } = req.body;
 
@@ -67,7 +63,6 @@ app.post("/login", (req, res) => {
 });
 
 /* ================= ADMIN LOGIN ================= */
-
 app.post("/admin/login", (req, res) => {
   const { username, password } = req.body;
 
@@ -90,7 +85,6 @@ app.post("/admin/login", (req, res) => {
 });
 
 /* ================= CHANGE PASSWORD ================= */
-
 app.post("/admin/change-password", async (req, res) => {
   const { username, oldPassword, newPassword } = req.body;
 
@@ -119,7 +113,6 @@ app.post("/admin/change-password", async (req, res) => {
 });
 
 /* ================= RESULT UPLOAD ================= */
-
 app.post("/upload-results", upload.single("file"), async (req, res) => {
   try {
     const { level, semester, academic_year } = req.body;
@@ -194,7 +187,7 @@ app.post("/upload-results", upload.single("file"), async (req, res) => {
   }
 });
 
-/* ================= NEW: COURSE TRACKING ================= */
+/* ================= COURSE TRACKING ================= */
 
 // Get all uploaded courses
 app.get("/admin/courses", (req, res) => {
@@ -210,7 +203,7 @@ app.get("/admin/courses", (req, res) => {
   });
 });
 
-// Get results for a specific course
+// Get results for a course
 app.get("/admin/results/course", (req, res) => {
   const { course, level, semester, year } = req.query;
 
@@ -233,18 +226,41 @@ app.put("/admin/results/:id", (req, res) => {
   db.query(
     "UPDATE results SET reg_number=?, course_code=?, score=? WHERE id=?",
     [reg_number, course_code, score, id],
-    (err) => {
+    (err, result) => {
       if (err) return res.status(500).json(err);
-      res.json({ message: "Result updated successfully" });
+
+      res.json({
+        success: true,
+        message: "Result updated successfully"
+      });
     }
   );
 });
 
-// Delete single result
+// 🔥 FIXED DELETE SINGLE RESULT
 app.delete("/admin/results/:id", (req, res) => {
-  db.query("DELETE FROM results WHERE id=?", [req.params.id], (err) => {
-    if (err) return res.status(500).json(err);
-    res.json({ message: "Result deleted" });
+  const id = req.params.id;
+
+  db.query("DELETE FROM results WHERE id=?", [id], (err, result) => {
+    if (err) {
+      return res.status(500).json({
+        success: false,
+        message: "Database error",
+        error: err
+      });
+    }
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Result not found or already deleted"
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Result deleted successfully"
+    });
   });
 });
 
@@ -264,7 +280,6 @@ app.delete("/admin/results/course", (req, res) => {
 });
 
 /* ================= NOTICES ================= */
-
 app.get("/admin/notices", (req, res) => {
   db.query(
     "SELECT * FROM notices ORDER BY date_posted DESC",
@@ -278,9 +293,8 @@ app.get("/admin/notices", (req, res) => {
 app.post("/admin/notice", (req, res) => {
   const { title, message, student_reg, expires_at } = req.body;
 
-  const targetStudent = student_reg && student_reg.trim() !== "" 
-    ? student_reg 
-    : null;
+  const targetStudent =
+    student_reg && student_reg.trim() !== "" ? student_reg : null;
 
   db.query(
     `INSERT INTO notices (title, message, date_posted, student_reg, expires_at)
@@ -305,17 +319,14 @@ app.delete("/admin/notice/:id", (req, res) => {
 });
 
 /* ================= HOME ================= */
-
 app.get("/", (req, res) => {
   res.send("Server running");
 });
 
 /* ================= STATIC ================= */
-
 app.use("/admin", express.static(path.join(__dirname, "admin-portal")));
 
 /* ================= START SERVER ================= */
-
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, "0.0.0.0", () => {
