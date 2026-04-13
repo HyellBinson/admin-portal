@@ -258,41 +258,11 @@ app.delete("/admin/results/:id", (req, res) => {
   );
 });
 
-/* ===================== DELETE COURSE (PARAM VERSION - KEEP SAFE) ===================== */
-
-app.delete("/admin/results/course/:course/:level/:semester/:year", (req, res) => {
-
-  const { course, level, semester, year } = req.params;
-
-  const sql = `
-    DELETE FROM results
-    WHERE course_code = ?
-    AND level = ?
-    AND semester = ?
-    AND academic_year = ?
-  `;
-
-  db.query(sql, [course, level, semester, year], (err, result) => {
-    if (err) {
-      console.log(err);
-      return res.status(500).json({
-        success: false,
-        message: "Database error"
-      });
-    }
-
-    res.json({
-      success: true,
-      message: "Course deleted successfully"
-    });
-  });
-});
-
-/* ===================== 🔥 FIX: FRONTEND DELETE SUPPORT ===================== */
+/* ===================== DELETE COURSE (FIXED ONLY HERE) ===================== */
 
 app.delete("/admin/results/course", (req, res) => {
 
-  const data = req.body || req.query;
+  const data = req.body || req.query || {};
 
   const course = data.course;
   const level = data.level;
@@ -319,14 +289,14 @@ app.delete("/admin/results/course", (req, res) => {
   db.query(sql, [course, level, semester, year], (err, result) => {
 
     if (err) {
-      console.log(err);
+      console.log("MYSQL ERROR:", err);
       return res.status(500).json({
         success: false,
         message: "Database error"
       });
     }
 
-    res.json({
+    return res.json({
       success: true,
       message: "Course deleted successfully"
     });
@@ -365,7 +335,7 @@ app.delete("/admin/notice/:id", (req, res) => {
   db.query(
     "DELETE FROM notices WHERE id=?",
     [req.params.id],
-    (err, result) => {
+    (err) => {
       if (err) return res.status(500).json({ success: false });
 
       res.json({ success: true });
