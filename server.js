@@ -264,12 +264,16 @@ app.delete("/admin/results/:id", (req, res) => {
 app.delete("/admin/results/course", (req, res) => {
   const { course, level, semester, year } = req.query;
 
-  console.log("DELETE COURSE REQUEST:", { course, level, semester, year });
+  console.log("=== DELETE COURSE REQUEST ===");
+  console.log("Query Params:", { course, level, semester, year });
+  console.log("Full URL:", req.url);
 
+  // Strong validation
   if (!course || !level || !semester || !year) {
+    console.log("❌ Missing parameters");
     return res.status(400).json({
       success: false,
-      message: "Missing required parameters"
+      message: "Missing course parameters"
     });
   }
 
@@ -281,24 +285,28 @@ app.delete("/admin/results/course", (req, res) => {
       AND academic_year = ?
   `;
 
+  console.log("Executing SQL...");
+
   db.query(sql, [course, level, semester, year], (err, result) => {
     if (err) {
-      console.error("Database Error:", err);
+      console.error("❌ MYSQL ERROR:", err);
+      console.error("Error Code:", err.code);
+      console.error("Error SQL Message:", err.sqlMessage);
+      
       return res.status(500).json({
         success: false,
-        message: "Database error while deleting course"
+        message: "Database error: " + (err.sqlMessage || err.message)
       });
     }
 
-    console.log(`Deleted ${result.affectedRows} records`);
+    console.log(`✅ Success - Deleted ${result.affectedRows} record(s)`);
 
     res.json({
       success: true,
-      message: `Course ${course} (${level} - ${semester} ${year}) deleted successfully`
+      message: `Course ${course} deleted successfully (${result.affectedRows} results removed)`
     });
   });
 });
-
 /* ===================== NOTICES ===================== */
 
 app.get("/admin/notices", (req, res) => {
