@@ -260,41 +260,41 @@ app.delete("/admin/results/:id", (req, res) => {
 
 /* ===================== DELETE COURSE (FIXED ONLY THIS PART) ===================== */
 
+/* ===================== DELETE ENTIRE COURSE ===================== */
 app.delete("/admin/results/course", (req, res) => {
-
-  // 🔥 FIX: use query instead of body (Render-safe)
   const { course, level, semester, year } = req.query;
 
-  console.log("DELETE COURSE INPUT:", req.query);
+  console.log("DELETE COURSE REQUEST:", { course, level, semester, year });
 
   if (!course || !level || !semester || !year) {
     return res.status(400).json({
       success: false,
-      message: "Missing course data"
+      message: "Missing required parameters"
     });
   }
 
   const sql = `
-    DELETE FROM results
-    WHERE course_code = ?
-    AND level = ?
-    AND semester = ?
-    AND academic_year = ?
+    DELETE FROM results 
+    WHERE course_code = ? 
+      AND level = ? 
+      AND semester = ? 
+      AND academic_year = ?
   `;
 
   db.query(sql, [course, level, semester, year], (err, result) => {
-
     if (err) {
-      console.log("MYSQL ERROR:", err);
+      console.error("Database Error:", err);
       return res.status(500).json({
         success: false,
-        message: "Database error"
+        message: "Database error while deleting course"
       });
     }
 
-    return res.json({
+    console.log(`Deleted ${result.affectedRows} records`);
+
+    res.json({
       success: true,
-      message: "Course deleted successfully"
+      message: `Course ${course} (${level} - ${semester} ${year}) deleted successfully`
     });
   });
 });
