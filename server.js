@@ -45,7 +45,6 @@ const upload = multer({ storage });
 /* ===================== STUDENT LOGIN ===================== */
 app.post("/login", (req, res) => {
   const { reg_number, password } = req.body;
-
   db.query(
     "SELECT * FROM students WHERE reg_number=? AND password=?",
     [reg_number, password],
@@ -74,11 +73,9 @@ app.post("/admin/login", (req, res) => {
 
       try {
         const isMatch = await bcrypt.compare(password, admin.password);
-
         if (!isMatch) {
           return res.json({ success: false, message: "Invalid credentials" });
         }
-
         res.json({ success: true, admin });
       } catch (error) {
         console.error(error);
@@ -86,6 +83,73 @@ app.post("/admin/login", (req, res) => {
       }
     }
   );
+});
+
+/* ===================== CHANGE ADMIN PASSWORD (NEW ROUTE) ===================== */
+app.post("/admin/change-password", async (req, res) => {
+  const { username, oldPassword, newPassword } = req.body;
+
+  if (!username || !oldPassword || !newPassword) {
+    return res.status(400).json({ 
+      success: false, 
+      message: "Username, old password and new password are required" 
+    });
+  }
+
+  if (newPassword.length < 6) {
+    return res.status(400).json({ 
+      success: false, 
+      message: "New password must be at least 6 characters long" 
+    });
+  }
+
+  try {
+    // Find the admin
+    const [admin] = await db.promise().query(
+      "SELECT * FROM admins WHERE username = ?", 
+      [username]
+    );
+
+    if (admin.length === 0) {
+      return res.status(404).json({ 
+        success: false, 
+        message: "Admin not found" 
+      });
+    }
+
+    const currentAdmin = admin[0];
+
+    // Verify old password
+    const isMatch = await bcrypt.compare(oldPassword, currentAdmin.password);
+    if (!isMatch) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Old password is incorrect" 
+      });
+    }
+
+    // Hash new password
+    const salt = await bcrypt.genSalt(10);
+    const hashedNewPassword = await bcrypt.hash(newPassword, salt);
+
+    // Update password
+    await db.promise().query(
+      "UPDATE admins SET password = ? WHERE username = ?", 
+      [hashedNewPassword, username]
+    );
+
+    res.json({ 
+      success: true, 
+      message: "Password changed successfully!" 
+    });
+
+  } catch (error) {
+    console.error("Change password error:", error);
+    res.status(500).json({ 
+      success: false, 
+      message: "Server error. Please try again later." 
+    });
+  }
 });
 
 /* ===================== UPLOAD RESULTS ===================== */
@@ -139,7 +203,6 @@ app.post("/upload-results", upload.single("file"), async (req, res) => {
     }
 
     fs.unlinkSync(req.file.path);
-
     res.json({ success: true, message: "Results uploaded successfully" });
 
   } catch (err) {
@@ -175,23 +238,20 @@ app.get("/admin/results/course", (req, res) => {
   );
 });
 
-/* ===================== DELETE ENTIRE COURSE (NEW ROUTE) ===================== */
+/* ===================== DELETE ENTIRE COURSE ===================== */
 app.post("/admin/results/course/delete", (req, res) => {
   const { course, level, semester, year } = req.body;
 
   if (!course || !level || !semester || !year) {
     return res.status(400).json({ 
       success: false, 
-      message: "Missing course details (course, level, semester, year)" 
+      message: "Missing course details" 
     });
   }
 
   db.query(
     `DELETE FROM results 
-     WHERE course_code = ? 
-       AND level = ? 
-       AND semester = ? 
-       AND academic_year = ?`,
+     WHERE course_code = ? AND level = ? AND semester = ? AND academic_year = ?`,
     [course, level, semester, year],
     (err, result) => {
       if (err) {
@@ -202,16 +262,9 @@ app.post("/admin/results/course/delete", (req, res) => {
         });
       }
 
-      if (result.affectedRows === 0) {
-        return res.status(404).json({ 
-          success: false, 
-          message: "No results found for this course" 
-        });
-      }
-
       res.json({ 
         success: true, 
-        message: `${result.affectedRows} result(s) for ${course} deleted successfully` 
+        message: `${result.affectedRows} result(s) deleted successfully` 
       });
     }
   );
@@ -239,11 +292,9 @@ app.delete("/admin/results/:id", (req, res) => {
     [req.params.id],
     (err, result) => {
       if (err) return res.status(500).json({ success: false });
-
       if (result.affectedRows === 0) {
         return res.status(404).json({ success: false, message: "Not found" });
       }
-
       res.json({ success: true, message: "Deleted successfully" });
     }
   );
@@ -258,13 +309,11 @@ app.post("/admin/results/bulk-delete", (req, res) => {
   }
 
   const placeholders = ids.map(() => "?").join(",");
-
   db.query(
     `DELETE FROM results WHERE id IN (${placeholders})`,
     ids,
     (err, result) => {
       if (err) return res.status(500).json({ success: false });
-
       res.json({
         success: true,
         message: `${result.affectedRows} result(s) deleted`
@@ -286,7 +335,6 @@ app.get("/admin/notices", (req, res) => {
 
 app.post("/admin/notice", (req, res) => {
   const { title, message, student_reg, expires_at } = req.body;
-
   db.query(
     "INSERT INTO notices (title, message, student_reg, expires_at, date_posted) VALUES (?,?,?,?,NOW())",
     [title, message, student_reg || null, expires_at || null],
@@ -309,7 +357,7 @@ app.get("/", (req, res) => {
   res.send("Server is running ✅");
 });
 
-/* ===================== START SERVER ===================== */
+/* ===================== START ===================== */
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, "0.0.0.0", () => {
