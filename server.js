@@ -56,7 +56,7 @@ app.post("/login", (req, res) => {
   );
 });
 
-/* ===================== ADMIN LOGIN (FIXED) ===================== */
+/* ===================== ADMIN LOGIN ===================== */
 app.post("/admin/login", (req, res) => {
   const { username, password } = req.body;
 
@@ -175,6 +175,48 @@ app.get("/admin/results/course", (req, res) => {
   );
 });
 
+/* ===================== DELETE ENTIRE COURSE (NEW ROUTE) ===================== */
+app.post("/admin/results/course/delete", (req, res) => {
+  const { course, level, semester, year } = req.body;
+
+  if (!course || !level || !semester || !year) {
+    return res.status(400).json({ 
+      success: false, 
+      message: "Missing course details (course, level, semester, year)" 
+    });
+  }
+
+  db.query(
+    `DELETE FROM results 
+     WHERE course_code = ? 
+       AND level = ? 
+       AND semester = ? 
+       AND academic_year = ?`,
+    [course, level, semester, year],
+    (err, result) => {
+      if (err) {
+        console.error("Delete entire course error:", err);
+        return res.status(500).json({ 
+          success: false, 
+          message: "Server error while deleting course" 
+        });
+      }
+
+      if (result.affectedRows === 0) {
+        return res.status(404).json({ 
+          success: false, 
+          message: "No results found for this course" 
+        });
+      }
+
+      res.json({ 
+        success: true, 
+        message: `${result.affectedRows} result(s) for ${course} deleted successfully` 
+      });
+    }
+  );
+});
+
 /* ===================== UPDATE RESULT ===================== */
 app.put("/admin/results/:id", (req, res) => {
   const { id } = req.params;
@@ -190,7 +232,7 @@ app.put("/admin/results/:id", (req, res) => {
   );
 });
 
-/* ===================== DELETE RESULT ===================== */
+/* ===================== DELETE SINGLE RESULT ===================== */
 app.delete("/admin/results/:id", (req, res) => {
   db.query(
     "DELETE FROM results WHERE id=?",
@@ -212,7 +254,7 @@ app.post("/admin/results/bulk-delete", (req, res) => {
   const { ids } = req.body;
 
   if (!Array.isArray(ids) || ids.length === 0) {
-    return res.status(400).json({ success: false, message: "No IDs" });
+    return res.status(400).json({ success: false, message: "No IDs provided" });
   }
 
   const placeholders = ids.map(() => "?").join(",");
@@ -225,7 +267,7 @@ app.post("/admin/results/bulk-delete", (req, res) => {
 
       res.json({
         success: true,
-        message: `${result.affectedRows} deleted`
+        message: `${result.affectedRows} result(s) deleted`
       });
     }
   );
@@ -267,7 +309,7 @@ app.get("/", (req, res) => {
   res.send("Server is running ✅");
 });
 
-/* ===================== START ===================== */
+/* ===================== START SERVER ===================== */
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, "0.0.0.0", () => {
