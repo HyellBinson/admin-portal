@@ -276,7 +276,7 @@ app.get("/admin/notices", (req, res) => {
   });
 });
 
-/* ===================== POST NOTICE (Improved for targeted notice) ===================== */
+/* ===================== POST NOTICE (Fixed for targeted) ===================== */
 app.post("/admin/notice", (req, res) => {
   const { title, message, student_reg, expires_at } = req.body;
 
@@ -288,9 +288,15 @@ app.post("/admin/notice", (req, res) => {
   }
 
   // Clean student_reg properly
-  const targetReg = student_reg && student_reg.toString().trim() !== "" 
-                    ? student_reg.toString().trim() 
-                    : null;
+  let targetReg = null;
+  if (student_reg) {
+    const trimmed = String(student_reg).trim();
+    if (trimmed !== "") {
+      targetReg = trimmed;
+    }
+  }
+
+  console.log(`[NOTICE] Posting: "${title}" | Target: ${targetReg || "ALL STUDENTS"}`);
 
   db.query(
     "INSERT INTO notices (title, message, student_reg, expires_at, date_posted) VALUES (?,?,?,?,NOW())",
@@ -309,6 +315,30 @@ app.post("/admin/notice", (req, res) => {
         success: true, 
         message: msg 
       });
+    }
+  );
+});
+
+/* ===================== STUDENT NOTICES (Important Fix) ===================== */
+app.get("/student/notices", (req, res) => {
+  const { reg_number } = req.query;
+
+  if (!reg_number) {
+    return res.status(400).json({ success: false, message: "reg_number is required" });
+  }
+
+  db.query(
+    `SELECT * FROM notices 
+     WHERE (student_reg IS NULL OR student_reg = ?) 
+       AND (expires_at IS NULL OR expires_at > NOW())
+     ORDER BY date_posted DESC`,
+    [reg_number],
+    (err, result) => {
+      if (err) {
+        console.error("Student notices error:", err);
+        return res.status(500).json({ success: false, message: "Server error" });
+      }
+      res.json(result);
     }
   );
 });
