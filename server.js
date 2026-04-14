@@ -278,6 +278,63 @@ app.delete("/admin/notice/:id", (req, res) => {
   });
 });
 
+
+/* ===================== ADMIN CHANGE PASSWORD ===================== */
+app.post("/admin/change-password", async (req, res) => {
+  const { username, oldPassword, newPassword } = req.body;
+
+  if (!username || !oldPassword || !newPassword) {
+    return res.status(400).json({ success: false, message: "All fields are required" });
+  }
+
+  if (newPassword.length < 6) {
+    return res.status(400).json({ success: false, message: "New password must be at least 6 characters" });
+  }
+
+  try {
+    // Find admin
+    const [admins] = await db.promise().query(
+      "SELECT * FROM admins WHERE username = ?",
+      [username]
+    );
+
+    if (admins.length === 0) {
+      return res.status(404).json({ success: false, message: "Admin not found" });
+    }
+
+    const admin = admins[0];
+
+    // Verify old password
+    const isMatch = await bcrypt.compare(oldPassword, admin.password);
+    if (!isMatch) {
+      return res.status(401).json({ success: false, message: "Old password is incorrect" });
+    }
+
+    // Hash new password
+    const salt = await bcrypt.genSalt(10);
+    const hashedNewPassword = await bcrypt.hash(newPassword, salt);
+
+    // Update password
+    await db.promise().query(
+      "UPDATE admins SET password = ? WHERE username = ?",
+      [hashedNewPassword, username]
+    );
+
+    res.json({ 
+      success: true, 
+      message: "Password changed successfully! ✅" 
+    });
+
+  } catch (err) {
+    console.error("Change Password Error:", err);
+    res.status(500).json({ 
+      success: false, 
+      message: "Server error. Please try again later." 
+    });
+  }
+});
+
+
 /* ===================== HOME ===================== */
 app.get("/", (req, res) => {
   res.send("Server is running ✅");
