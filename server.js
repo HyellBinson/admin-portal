@@ -85,70 +85,42 @@ app.post("/admin/login", (req, res) => {
   );
 });
 
-/* ===================== CHANGE ADMIN PASSWORD (NEW ROUTE) ===================== */
+/* ===================== CHANGE ADMIN PASSWORD ===================== */
 app.post("/admin/change-password", async (req, res) => {
   const { username, oldPassword, newPassword } = req.body;
 
   if (!username || !oldPassword || !newPassword) {
-    return res.status(400).json({ 
-      success: false, 
-      message: "Username, old password and new password are required" 
-    });
+    return res.status(400).json({ success: false, message: "All fields are required" });
   }
 
   if (newPassword.length < 6) {
-    return res.status(400).json({ 
-      success: false, 
-      message: "New password must be at least 6 characters long" 
-    });
+    return res.status(400).json({ success: false, message: "New password must be at least 6 characters" });
   }
 
   try {
-    // Find the admin
-    const [admin] = await db.promise().query(
-      "SELECT * FROM admins WHERE username = ?", 
-      [username]
-    );
+    const [admins] = await db.promise().query("SELECT * FROM admins WHERE username = ?", [username]);
 
-    if (admin.length === 0) {
-      return res.status(404).json({ 
-        success: false, 
-        message: "Admin not found" 
-      });
+    if (admins.length === 0) {
+      return res.status(404).json({ success: false, message: "Admin not found" });
     }
 
-    const currentAdmin = admin[0];
+    const admin = admins[0];
 
-    // Verify old password
-    const isMatch = await bcrypt.compare(oldPassword, currentAdmin.password);
+    const isMatch = await bcrypt.compare(oldPassword, admin.password);
     if (!isMatch) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "Old password is incorrect" 
-      });
+      return res.status(400).json({ success: false, message: "Old password is incorrect" });
     }
 
-    // Hash new password
     const salt = await bcrypt.genSalt(10);
-    const hashedNewPassword = await bcrypt.hash(newPassword, salt);
+    const hashedPassword = await bcrypt.hash(newPassword, salt);
 
-    // Update password
-    await db.promise().query(
-      "UPDATE admins SET password = ? WHERE username = ?", 
-      [hashedNewPassword, username]
-    );
+    await db.promise().query("UPDATE admins SET password = ? WHERE username = ?", [hashedPassword, username]);
 
-    res.json({ 
-      success: true, 
-      message: "Password changed successfully!" 
-    });
+    res.json({ success: true, message: "Password changed successfully!" });
 
   } catch (error) {
     console.error("Change password error:", error);
-    res.status(500).json({ 
-      success: false, 
-      message: "Server error. Please try again later." 
-    });
+    res.status(500).json({ success: false, message: "Server error" });
   }
 });
 
@@ -174,29 +146,22 @@ app.post("/upload-results", upload.single("file"), async (req, res) => {
 
       if (!reg_number || !course_code) continue;
 
-      const student = await query(
-        "SELECT * FROM students WHERE reg_number=?",
-        [reg_number]
-      );
+      const student = await query("SELECT * FROM students WHERE reg_number=?", [reg_number]);
 
       if (student.length === 0) {
-        await query(
-          "INSERT INTO students (full_name, reg_number, password) VALUES (?,?,?)",
-          [full_name, reg_number, "1234"]
-        );
+        await query("INSERT INTO students (full_name, reg_number, password) VALUES (?,?,?)", 
+          [full_name, reg_number, "1234"]);
       }
 
       const existing = await query(
-        `SELECT * FROM results 
-         WHERE reg_number=? AND course_code=? AND semester=? AND academic_year=?`,
+        `SELECT * FROM results WHERE reg_number=? AND course_code=? AND semester=? AND academic_year=?`,
         [reg_number, course_code, semester, academic_year]
       );
 
       if (existing.length === 0) {
         await query(
-          `INSERT INTO results 
-          (reg_number, course_code, course_title, unit, score, semester, academic_year, level)
-          VALUES (?,?,?,?,?,?,?,?)`,
+          `INSERT INTO results (reg_number, course_code, course_title, unit, score, semester, academic_year, level)
+           VALUES (?,?,?,?,?,?,?,?)`,
           [reg_number, course_code, course_title, unit, score, semester, academic_year, level]
         );
       }
@@ -228,8 +193,7 @@ app.get("/admin/results/course", (req, res) => {
   const { course, level, semester, year } = req.query;
 
   db.query(
-    `SELECT * FROM results 
-     WHERE course_code=? AND level=? AND semester=? AND academic_year=?`,
+    `SELECT * FROM results WHERE course_code=? AND level=? AND semester=? AND academic_year=?`,
     [course, level, semester, year],
     (err, result) => {
       if (err) return res.status(500).json(err);
@@ -243,23 +207,16 @@ app.post("/admin/results/course/delete", (req, res) => {
   const { course, level, semester, year } = req.body;
 
   if (!course || !level || !semester || !year) {
-    return res.status(400).json({ 
-      success: false, 
-      message: "Missing course details" 
-    });
+    return res.status(400).json({ success: false, message: "Missing course details" });
   }
 
   db.query(
-    `DELETE FROM results 
-     WHERE course_code = ? AND level = ? AND semester = ? AND academic_year = ?`,
+    `DELETE FROM results WHERE course_code = ? AND level = ? AND semester = ? AND academic_year = ?`,
     [course, level, semester, year],
     (err, result) => {
       if (err) {
         console.error("Delete entire course error:", err);
-        return res.status(500).json({ 
-          success: false, 
-          message: "Server error while deleting course" 
-        });
+        return res.status(500).json({ success: false, message: "Server error" });
       }
 
       res.json({ 
@@ -287,17 +244,13 @@ app.put("/admin/results/:id", (req, res) => {
 
 /* ===================== DELETE SINGLE RESULT ===================== */
 app.delete("/admin/results/:id", (req, res) => {
-  db.query(
-    "DELETE FROM results WHERE id=?",
-    [req.params.id],
-    (err, result) => {
-      if (err) return res.status(500).json({ success: false });
-      if (result.affectedRows === 0) {
-        return res.status(404).json({ success: false, message: "Not found" });
-      }
-      res.json({ success: true, message: "Deleted successfully" });
+  db.query("DELETE FROM results WHERE id=?", [req.params.id], (err, result) => {
+    if (err) return res.status(500).json({ success: false });
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: "Not found" });
     }
-  );
+    res.json({ success: true, message: "Deleted successfully" });
+  });
 });
 
 /* ===================== BULK DELETE ===================== */
@@ -309,38 +262,53 @@ app.post("/admin/results/bulk-delete", (req, res) => {
   }
 
   const placeholders = ids.map(() => "?").join(",");
-  db.query(
-    `DELETE FROM results WHERE id IN (${placeholders})`,
-    ids,
-    (err, result) => {
-      if (err) return res.status(500).json({ success: false });
-      res.json({
-        success: true,
-        message: `${result.affectedRows} result(s) deleted`
-      });
-    }
-  );
+  db.query(`DELETE FROM results WHERE id IN (${placeholders})`, ids, (err, result) => {
+    if (err) return res.status(500).json({ success: false });
+    res.json({ success: true, message: `${result.affectedRows} result(s) deleted` });
+  });
 });
 
 /* ===================== NOTICES ===================== */
 app.get("/admin/notices", (req, res) => {
-  db.query(
-    "SELECT * FROM notices ORDER BY date_posted DESC",
-    (err, result) => {
-      if (err) return res.status(500).json(err);
-      res.json(result);
-    }
-  );
+  db.query("SELECT * FROM notices ORDER BY date_posted DESC", (err, result) => {
+    if (err) return res.status(500).json(err);
+    res.json(result);
+  });
 });
 
+/* ===================== POST NOTICE (Improved for targeted notice) ===================== */
 app.post("/admin/notice", (req, res) => {
   const { title, message, student_reg, expires_at } = req.body;
+
+  if (!title || !message) {
+    return res.status(400).json({ 
+      success: false, 
+      message: "Title and message are required" 
+    });
+  }
+
+  // Clean student_reg properly
+  const targetReg = student_reg && student_reg.toString().trim() !== "" 
+                    ? student_reg.toString().trim() 
+                    : null;
+
   db.query(
     "INSERT INTO notices (title, message, student_reg, expires_at, date_posted) VALUES (?,?,?,?,NOW())",
-    [title, message, student_reg || null, expires_at || null],
-    (err) => {
-      if (err) return res.status(500).json({ success: false });
-      res.json({ success: true });
+    [title, message, targetReg, expires_at || null],
+    (err, result) => {
+      if (err) {
+        console.error("Notice insert error:", err);
+        return res.status(500).json({ success: false, message: "Failed to post notice" });
+      }
+
+      const msg = targetReg 
+        ? `Notice successfully sent to student: ${targetReg}` 
+        : "General notice posted successfully (visible to all students)";
+
+      res.json({ 
+        success: true, 
+        message: msg 
+      });
     }
   );
 });
